@@ -3,6 +3,8 @@ import { BaseProviderType } from '../base'
 import { event } from '../event'
 import { Browser, createBrowser } from '../browser'
 
+const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -297,6 +299,21 @@ export class KnoxProvider implements BaseProviderType {
       size: parseInt(size),
       groupId: task.groupId,
       content: content,
+    }
+
+    if (
+      task.status !== 'COMPLETED' &&
+      new Date(task.modified).valueOf() + ONE_MONTH_MS < Date.now()
+    ) {
+      this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.uid}/inline/update`, {
+        method: 'POST',
+        body: {
+          inlineType: 'STATUS',
+          status: 'NEED_ACTION',
+        },
+      }).catch((e) => {
+        console.error('Failed to archive old item:', e)
+      })
     }
 
     return info
