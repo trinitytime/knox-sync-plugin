@@ -32,8 +32,6 @@ export class KnoxSettingTab extends PluginSettingTab {
   async displayAsync() {
     this.clear()
 
-    new Setting(this.containerEl).setName('General').setHeading()
-
     new Setting(this.containerEl).setName('Knox Portal Host').addText((text) =>
       text
         .setPlaceholder('Enter Knox Portal Host')
