@@ -328,10 +328,22 @@ export class KnoxProvider implements BaseProviderType {
     return null
   }
 
-  protected async createItem(item: ItemInfoType): Promise<ProviderItemInfoType> {
+  protected findGroup(key: string): GroupInfoType | null {
+    const projectName = key.split('/')[0]
+    const group = this.groups[projectName] ?? null
+
+    return group
+  }
+  protected async createItem(item: ItemInfoType): Promise<ProviderItemInfoType | null> {
     const projectName = item.key.split('/')[0]
+    // Find the group for the project
+    const group = this.findGroup(item.key)
+    if (!group) {
+      // No group found for the project
+      return null
+    }
+
     const subject = item.key.substring(projectName.length + 1)
-    const group = this.groups[projectName]
 
     const resp: TaskDetailType = await this.fetch(
       `/pims/todo/rest/v1/phase2/group/${group.id}/todos/create`,
@@ -358,8 +370,17 @@ export class KnoxProvider implements BaseProviderType {
   }
 
   async uploadFile(item: ItemInfoType, data: ArrayBuffer): Promise<boolean> {
+    const group = this.findGroup(item.key)
+    if (!group) {
+      return false
+    }
+
     if (!this.items[item.key]) {
-      this.items[item.key] = await this.createItem(item)
+      const itemInfo = await this.createItem(item)
+      if (!itemInfo) {
+        return false
+      }
+      this.items[item.key] = itemInfo
     }
 
     const task = this.items[item.key]
@@ -381,9 +402,19 @@ export class KnoxProvider implements BaseProviderType {
   }
 
   async deleteFile(item: ItemInfoType): Promise<boolean> {
-    if (!this.items[item.key]) {
-      this.items[item.key] = await this.createItem(item)
+    const group = this.findGroup(item.key)
+    if (!group) {
+      return false
     }
+
+    if (!this.items[item.key]) {
+      const itemInfo = await this.createItem(item)
+      if (!itemInfo) {
+        return false
+      }
+      this.items[item.key] = itemInfo
+    }
+
     const task = this.items[item.key]
     const result = await this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`, {
       method: 'POST',
