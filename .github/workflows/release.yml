@@ -34,6 +34,9 @@ jobs:
       - name: Build project
         run: bun run build
 
+      - name: Create ZIP file
+        run: mv ./dist ./knox-sync && zip -r knox-sync.zip ./knox-sync
+
       - name: Get release version
         id: version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
@@ -47,4 +50,4 @@ jobs:
           gh release create "${{ steps.version.outputs.VERSION }}" \
             --title="${{ steps.version.outputs.VERSION }}" \
             --draft \
-            dist/main.js dist/manifest.json
+            knox-sync.zip
