@@ -17,7 +17,7 @@ export const event = new EventEmitter()
 event.on('create', (file: TFile) => {
   if (syncState.lockFile.has(file.path)) return
 
-  if (file instanceof TFile) {
+  if (file instanceof TFile && file.path.startsWith('+')) {
     const item = {
       status: 'C',
       ...getFileInfo(file),
@@ -30,7 +30,7 @@ event.on('create', (file: TFile) => {
 event.on('modify', (file: TFile) => {
   if (syncState.lockFile.has(file.path)) return
 
-  if (file instanceof TFile) {
+  if (file instanceof TFile && file.path.startsWith('+')) {
     const item = {
       status: 'U',
       ...getFileInfo(file),
@@ -43,7 +43,7 @@ event.on('modify', (file: TFile) => {
 event.on('delete', (file: TFile) => {
   if (syncState.lockFile.has(file.path)) return
 
-  if (file instanceof TFile) {
+  if (file instanceof TFile && file.path.startsWith('+')) {
     const item: ItemInfoType = {
       status: 'D',
       ...getFileInfo(file),
@@ -58,19 +58,23 @@ event.on('rename', (file: TFile, oldPath: string) => {
   if (syncState.lockFile.has(oldPath)) return
 
   if (file instanceof TFile) {
-    const item = {
-      status: 'C',
-      ...getFileInfo(file),
+    if (file.path.startsWith('+')) {
+      const item = {
+        status: 'C',
+        ...getFileInfo(file),
+      }
+      void db.file.put(item)
     }
-    void db.file.put(item)
 
-    const oldItem: ItemInfoType = {
-      status: 'D',
-      ...getFileInfo(file),
-      key: oldPath,
-      mTime: Date.now(),
+    if (oldPath.startsWith('+')) {
+      const oldItem: ItemInfoType = {
+        status: 'D',
+        ...getFileInfo(file),
+        key: oldPath,
+        mTime: Date.now(),
+      }
+      void db.file.put(oldItem)
     }
-    void db.file.put(oldItem)
   }
 })
 

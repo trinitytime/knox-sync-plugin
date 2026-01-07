@@ -236,7 +236,7 @@ export class KnoxProvider implements BaseProviderType {
       return null
     }
 
-    const [mTime, , cTime, size, content] = data
+    const [mTime, cTime, , size, content] = data
     const status = task.status === 'COMPLETED' ? 'D' : 'N'
 
     const info: ProviderItemInfoType = {

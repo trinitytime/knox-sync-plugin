@@ -145,6 +145,7 @@ async function uploadFiles({
 
       const content = await vault.readBinary(file)
       await remote.uploadFile(localItem, content)
+      successfulKeys.add(key)
     },
   )
 
@@ -168,11 +169,15 @@ export async function sync(vault: Vault, remote: Remote, fileManager: FileManage
 
     // download remote files
     const downloadedKeys = await downloadFiles({ vault, remote, fileManager, remoteList, files })
-    Array.from(downloadedKeys).forEach((key) => files.delete(key))
+    const downloadCount = await db.file.where('key').anyOf(Array.from(downloadedKeys)).delete()
 
     // upload remaining local files
     const uploadedKeys = await uploadFiles({ vault, files, remote })
-    Array.from(uploadedKeys).forEach((key) => files.delete(key))
+    const uploadCount = await db.file.where('key').anyOf(Array.from(uploadedKeys)).delete()
+
+    console.debug(
+      `Sync summary: downloaded ${downloadedKeys.size} files (${downloadCount} db records deleted), uploaded ${uploadedKeys.size} files (${uploadCount} db records deleted)`,
+    )
 
     // update last sync time
     event.emit('updateLastSyncTime')
