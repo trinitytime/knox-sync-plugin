@@ -1,6 +1,6 @@
 {
 	"name": "knox-sync-plugin",
-	"version": "1.0.3",
+	"version": "1.0.4",
 	"description": "Sync your vault with knox portal.",
 	"main": "dist/main.js",
 	"scripts": {
