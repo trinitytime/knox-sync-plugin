@@ -365,13 +365,28 @@ export class KnoxProvider implements BaseProviderType {
     }
 
     const task = this.items[item.key]
-    const result = await this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`, {
-      method: 'POST',
-      body: {
-        inlineType: 'STATUS',
-        status: 'COMPLETED',
-      },
-    })
+
+    const knoxContent = encodeKnoxContent(`${item.mTime};${item.cTime};D;${item.size};;`)
+    const result = await Promise.resolve()
+      .then(() =>
+        this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`, {
+          method: 'POST',
+          body: {
+            inlineType: 'CONTENTS',
+            contentsType: 'MIME',
+            contents: knoxContent,
+          },
+        }),
+      )
+      .then(() =>
+        this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`, {
+          method: 'POST',
+          body: {
+            inlineType: 'STATUS',
+            status: 'COMPLETED',
+          },
+        }),
+      )
       .then(() => true)
       .catch(() => false)
 
