@@ -17,14 +17,16 @@ async function loadLocalFiles(vault: Vault): Promise<Map<string, ItemInfoType>> 
   const files = new Map<string, ItemInfoType>()
 
   vault.getFiles().forEach((file) => {
-    const item: ItemInfoType = {
-      key: file.path,
-      status: 'N',
-      cTime: file.stat.ctime,
-      mTime: file.stat.mtime,
-      size: file.stat.size,
+    if (file.path.startsWith('+')) {
+      const item: ItemInfoType = {
+        key: file.path,
+        status: 'N',
+        cTime: file.stat.ctime,
+        mTime: file.stat.mtime,
+        size: file.stat.size,
+      }
+      files.set(item.key, item)
     }
-    files.set(item.key, item)
   })
 
   await db.file.toArray().then((items) => {
