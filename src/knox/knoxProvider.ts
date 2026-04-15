@@ -171,7 +171,7 @@ export class KnoxProvider implements BaseProviderType {
       }
     }
 
-    return Object.values(this.groups)
+    return Object.keys(this.groups).map(key => this.groups[key])
   }
 
   protected async fetchGroupItemList(group: GroupInfoType): Promise<ProviderItemInfoType[]> {
@@ -232,12 +232,12 @@ export class KnoxProvider implements BaseProviderType {
     const task: TaskDetailType = await this.fetch(`/pims/todo/rest/v1/phase2/todos/${id}?${params}`)
 
     const data = extractText(task.contents)
-    if (!data) {
-      return null
-    }
-
-    const [mTime, cTime, , size, content] = data
     const status = task.status === 'COMPLETED' ? 'D' : 'N'
+
+    // content가 없는 태스크(이전 동기화 도중 중단된 경우 등)도 this.items에 등록하여
+    // 동일 이름으로 중복 생성되는 것을 방지한다.
+    const fallback: string[] = ['0', '0', '', '0', '']
+    const [mTime, cTime, , size, content] = data ?? fallback
 
     const info: ProviderItemInfoType = {
       id: task.uid,
@@ -247,7 +247,7 @@ export class KnoxProvider implements BaseProviderType {
       mTime: parseInt(mTime),
       size: parseInt(size),
       groupId: task.groupId,
-      content: content,
+      content: data ? (content ?? null) : null,
     }
 
     if (

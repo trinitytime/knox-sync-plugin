@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile } from 'obsidian'
+import { Notice, Plugin, TAbstractFile, TFile } from 'obsidian'
 import { event } from '../event'
 import { KnoxSettingTab, KnoxSyncPluginSettings } from './settings'
 import { sync } from '../sync'
@@ -11,7 +11,11 @@ const local = {
 }
 
 export default class KnoxSyncPlugin extends Plugin {
-  settings: KnoxSyncPluginSettings
+  settings: KnoxSyncPluginSettings = {
+    host: 'http://samsung.net',
+    syncInterval: 0,
+    onSaveInterval: 0,
+  }
 
   async isIntervalSyncTime() {
     const settings = this.settings
@@ -56,14 +60,13 @@ export default class KnoxSyncPlugin extends Plugin {
       await provider.open()
       const ready = await provider.isReady()
       if (!ready) {
-        new Notice('Knox portal session has expired. Please log in again.')
         return
       }
 
       const groups = await provider.fetchGroupList()
       for (const group of groups) {
         if (!vault.getFolderByPath(group.name)) {
-          await vault.createFolder(group.name).catch(() => {})
+          await vault.createFolder(group.name).catch(() => { })
         }
       }
 
@@ -71,10 +74,8 @@ export default class KnoxSyncPlugin extends Plugin {
       await sync(vault, remote, this.app.fileManager)
       console.debug('Sync completed in', Date.now() - startTime, 'ms')
     } catch (e) {
-      if (e instanceof Error) {
-        console.error('Sync error:', e)
-      }
-      new Notice(e.message)
+      console.error('Sync error:', e)
+      new Notice(e instanceof Error ? e.message : 'Unknown sync error')
       return
     } finally {
       void provider.close()
@@ -105,27 +106,27 @@ export default class KnoxSyncPlugin extends Plugin {
       local.lastModifiedTime = 0
 
       this.registerEvent(
-        this.app.vault.on('create', (file: TFile) => {
+        this.app.vault.on('create', (file) => {
           event.emit('create', file)
           local.lastModifiedTime = Date.now()
         }),
       )
 
       this.registerEvent(
-        this.app.vault.on('modify', (file: TFile) => {
+        this.app.vault.on('modify', (file: TAbstractFile) => {
           event.emit('modify', file)
           local.lastModifiedTime = Date.now()
         }),
       )
 
       this.registerEvent(
-        this.app.vault.on('delete', (file: TFile) => {
+        this.app.vault.on('delete', (file: TAbstractFile) => {
           event.emit('delete', file)
           local.lastModifiedTime = Date.now()
         }),
       )
       this.registerEvent(
-        this.app.vault.on('rename', (file: TFile, oldPath: string) => {
+        this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
           event.emit('rename', file, oldPath)
           local.lastModifiedTime = Date.now()
         }),
