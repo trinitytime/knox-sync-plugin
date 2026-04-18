@@ -1,33 +1,37 @@
-import { FileManager, TAbstractFile, TFile, Vault } from 'obsidian'
+import { FileManager, TFile, Vault } from 'obsidian'
 import { db } from './database'
 import { Remote } from './remote'
 import { syncState } from './syncState'
 import { event } from './event'
+import { FileInfo, RemoteFileInfo } from './file'
 
 function getFileByPath(vault: Vault, path: string): TFile | null {
-  const file: TAbstractFile | null = vault.getAbstractFileByPath(path)
-  return file instanceof TFile ? file : null
+  const exact = vault.getAbstractFileByPath(path)
+  if (exact instanceof TFile) return exact
+
+  const lower = path.toLowerCase()
+  return vault.getFiles().find(f => f.path.toLowerCase() === lower) ?? null
 }
 
-async function loadLocalFiles(vault: Vault): Promise<Map<string, ItemInfoType>> {
-  const files = new Map<string, ItemInfoType>()
+
+async function loadLocalFiles(vault: Vault): Promise<Map<string, FileInfo>> {
+  const files = new Map<string, FileInfo>()
 
   // 로컬 볼트에서 '+' 경로로 시작하는 파일을 신규 항목으로 등록
-  vault.getFiles().forEach((file) => {
-    if (file.path.startsWith('+')) {
-      files.set(file.path, {
-        key: file.path,
-        status: 'N',
-        cTime: file.stat.ctime,
-        mTime: file.stat.mtime,
-        size: file.stat.size,
-      })
-    }
-  })
+  const vaultFiles = vault.getFiles().filter((f) => f.path.startsWith('+'))
+  await Promise.all(
+    vaultFiles.map(async (file) => {
+      const fi = await FileInfo.fromTFile(file, 'N')
+      files.set(fi.key, fi)
+    }),
+  )
 
   // DB에 저장된 변경 이력으로 덮어쓰기
   const dbItems = await db.file.toArray()
-  dbItems.forEach((item) => files.set(item.key, item))
+  dbItems.forEach((item) => {
+    const fi = FileInfo.from(item)
+    files.set(item.key, fi)
+  })
 
   return files
 }
@@ -35,28 +39,28 @@ async function loadLocalFiles(vault: Vault): Promise<Map<string, ItemInfoType>> 
 async function ensureFolderExists(vault: Vault, filePath: string): Promise<void> {
   const folderPath = filePath.substring(0, filePath.lastIndexOf('/'))
   if (folderPath && !vault.getFolderByPath(folderPath)) {
-    await vault.createFolder(folderPath).catch(() => {})
+    await vault.createFolder(folderPath).catch(() => { })
   }
 }
 
 async function writeFileWithLock(
   vault: Vault,
-  key: string,
+  path: string,
   file: TFile | null,
   content: ArrayBuffer | null,
   stat: { ctime: number; mtime: number },
 ): Promise<void> {
-  syncState.lockFile.add(key)
+  syncState.lockFile.add(path)
   try {
     if (file) {
       if (content) await vault.modifyBinary(file, content, stat)
     } else if (content) {
-      await vault.createBinary(key, content, stat)
+      await vault.createBinary(path, content, stat)
     } else {
-      await vault.create(key, '', stat)
+      await vault.create(path, '', stat)
     }
   } finally {
-    syncState.lockFile.delete(key)
+    syncState.lockFile.delete(path)
   }
 }
 
@@ -64,10 +68,11 @@ async function downloadSingleFile(
   vault: Vault,
   remote: Remote,
   fileManager: FileManager,
-  remoteItem: ItemInfoType,
-  pendingUploads: Map<string, ItemInfoType>,
+  remoteItem: RemoteFileInfo,
+  pendingUploads: Map<string, FileInfo>,
 ): Promise<boolean> {
   const key = remoteItem.key
+  const fullPath = remoteItem.fullPath
   const stat = { ctime: remoteItem.cTime, mtime: remoteItem.mTime }
 
   // 업로드 대기 중인 항목이 있는 경우: 원격이 더 최신이면 업로드 목록에서 제거, 로컬이 최신이면 다운로드 건너뜀
@@ -79,32 +84,38 @@ async function downloadSingleFile(
     }
   }
 
-  const localFile = getFileByPath(vault, key)
+  const localFile = getFileByPath(vault, fullPath)
 
   if (localFile) {
     if (localFile.stat.mtime >= remoteItem.mTime) return false // 로컬이 더 최신이면 건너뜀
 
     if (remoteItem.status === 'D') {
-      syncState.lockFile.add(key)
-      await fileManager.trashFile(localFile)
-      syncState.lockFile.delete(key)
+      syncState.lockFile.add(fullPath)
+      try {
+        await fileManager.trashFile(localFile)
+      } finally {
+        syncState.lockFile.delete(fullPath)
+      }
     } else {
       const content = await remote.downloadFile(key)
       if (content) {
-        syncState.lockFile.add(key)
-        await vault.modifyBinary(localFile, content, stat)
-        syncState.lockFile.delete(key)
+        syncState.lockFile.add(fullPath)
+        try {
+          await vault.modifyBinary(localFile, content, stat)
+        } finally {
+          syncState.lockFile.delete(fullPath)
+        }
       }
     }
   } else {
     if (remoteItem.status === 'D') return false // 원격에서 삭제된 파일은 로컬에도 없으므로 건너뜀
 
     const content = await remote.downloadFile(key)
-    await ensureFolderExists(vault, key)
+    await ensureFolderExists(vault, fullPath)
 
     // 다운로드 대기 중 다른 Promise가 같은 파일을 생성했을 수 있으므로 재확인
-    const raceFile = getFileByPath(vault, key)
-    await writeFileWithLock(vault, key, raceFile, content, stat)
+    const raceFile = getFileByPath(vault, fullPath)
+    await writeFileWithLock(vault, fullPath, raceFile, content, stat)
   }
 
   return true
@@ -120,8 +131,8 @@ async function downloadFiles({
   vault: Vault
   remote: Remote
   fileManager: FileManager
-  remoteList: ItemInfoType[]
-  files: Map<string, ItemInfoType>
+  remoteList: RemoteFileInfo[]
+  files: Map<string, FileInfo>
 }): Promise<Set<string>> {
   const results = await Promise.all(
     remoteList.map(async (remoteItem) => {
@@ -139,7 +150,7 @@ async function uploadFiles({
   remote,
 }: {
   vault: Vault
-  files: Map<string, ItemInfoType>
+  files: Map<string, FileInfo>
   remote: Remote
 }): Promise<Set<string>> {
   const results = await Promise.all(
@@ -149,7 +160,7 @@ async function uploadFiles({
         return key
       }
 
-      const file = getFileByPath(vault, key)
+      const file = getFileByPath(vault, localItem.fullPath)
       if (!file) return null
 
       const content = await vault.readBinary(file)
@@ -167,7 +178,7 @@ export async function sync(vault: Vault, remote: Remote, fileManager: FileManage
 
   try {
     const files = await loadLocalFiles(vault)
-    const remoteList: ItemInfoType[] = await remote.fetchList()
+    const remoteList: RemoteFileInfo[] = await remote.fetchList()
 
     const downloadedKeys = await downloadFiles({ vault, remote, fileManager, remoteList, files })
     const downloadCount = await db.file.where('key').anyOf(Array.from(downloadedKeys)).delete()
@@ -179,8 +190,8 @@ export async function sync(vault: Vault, remote: Remote, fileManager: FileManage
       `Sync summary: downloaded ${downloadedKeys.size} files (${downloadCount} db records deleted), uploaded ${uploadedKeys.size} files (${uploadCount} db records deleted)`,
     )
 
-    event.emit('updateLastSyncTime')
   } finally {
+    event.emit('updateLastSyncTime')
     syncState.reset()
   }
 }

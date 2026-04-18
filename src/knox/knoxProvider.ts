@@ -1,5 +1,6 @@
 import { BaseProviderType } from '../base'
 import { Browser, createBrowser } from '../browser'
+import { FileInfo, RemoteFileInfo } from '../file'
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -27,16 +28,68 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return bytes.buffer
 }
 
-function extractText(text: string | null): string[] | null {
-  if (text) {
-    const match = text.match(/\[\[\[(.*?)\]\]\]/)
-    if (match && match[1]) {
-      const data = match[1]
-      return data.split(';')
+interface ParsedKnoxContent {
+  version: number
+  mTime: number
+  cTime: number
+  status: string
+  size: number
+  path: string
+  content: string | null
+}
+
+// v1 포맷 (버전 없음): mTime;cTime;status;size;content;
+// v2 포맷            : 2:mTime;cTime;status;size;path;content;
+function parseKnoxContent(text: string | null): ParsedKnoxContent | null {
+  if (!text) return null
+
+  const match = text.match(/\[\[\[([\s\S]*?)\]\]\]/)
+  if (!match?.[1]) return null
+
+  const raw = match[1]
+  const versionMatch = raw.match(/^(\d+):(.*)$/s)
+  const version = versionMatch ? parseInt(versionMatch[1]) : 1
+  const data = versionMatch ? versionMatch[2] : raw
+  const fields = data.split(';')
+
+  if (version === 1) {
+    const [mTime = '0', cTime = '0', status = 'N', size = '0', content = ''] = fields
+    return {
+      version: 1,
+      mTime: parseInt(mTime),
+      cTime: parseInt(cTime),
+      status,
+      size: parseInt(size),
+      path: '',
+      content: content || null,
     }
   }
 
-  return null
+  const [mTime = '0', cTime = '0', status = 'N', size = '0', path = '', content = ''] = fields
+  return {
+    version,
+    mTime: parseInt(mTime),
+    cTime: parseInt(cTime),
+    status,
+    size: parseInt(size),
+    path,
+    content: content || null,
+  }
+}
+
+function buildKnoxData(
+  mTime: number,
+  cTime: number,
+  status: string,
+  size: number,
+  path: string,
+  content: string,
+  version = 2,
+): string {
+  if (version === 1) {
+    return `${mTime};${cTime};${status};${size};${content};`
+  }
+  return `${version}:${mTime};${cTime};${status};${size};${path};${content};`
 }
 
 function encodeKnoxContent(text: string): string {
@@ -59,32 +112,32 @@ export class KnoxProvider implements BaseProviderType {
   browser: Browser = createBrowser()
   host: string
   groups: Record<string, GroupInfoType> = {}
-  items: Record<string, ProviderItemInfoType> = {}
+  items: Record<string, RemoteFileInfo> = {}
 
   constructor(host: string) {
     this.host = host
   }
 
   protected async fetch<T>(url: string, options: FetchOptionType = { method: 'GET' }): Promise<T> {
+    const safeUrl = JSON.stringify(url)
+    const safeMethod = JSON.stringify(options.method)
+
     if ('GET' === options.method) {
       return this.browser.webContents.executeJavaScript(`
-        fetch(window.location.origin + "${url}" , {
-          method: '${options.method}',
-          headers: {
-            'content-type': 'application/json',
-          },
-        }).then(response => response.json())
-    `)
+        fetch(window.location.origin + ${safeUrl}, {
+          method: ${safeMethod},
+          headers: { 'content-type': 'application/json' },
+        }).then(r => r.json())
+      `)
     }
 
+    const safeBody = JSON.stringify(JSON.stringify(options.body))
     return this.browser.webContents.executeJavaScript(`
-      fetch(window.location.origin + "${url}" , {
-        method: '${options.method}',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(${JSON.stringify(options.body)}),
-      }).then(response => response.json())
+      fetch(window.location.origin + ${safeUrl}, {
+        method: ${safeMethod},
+        headers: { 'content-type': 'application/json' },
+        body: ${safeBody},
+      }).then(r => r.json())
     `)
   }
 
@@ -134,9 +187,8 @@ export class KnoxProvider implements BaseProviderType {
       orderField: 'CREATE_DATE',
       orderType: 'DESC',
     }).toString()
-    const projList: KnoxProjectListType = await this.fetch(
-      `/pims/todo/rest/v1/project/list?${params}`,
-    )
+    const url = `/pims/todo/rest/v1/project/list?${params}`
+    const projList: KnoxProjectListType = await this.fetch(url)
 
     const filteredProjects = projList.elements.filter((proj) => proj.projectName.startsWith('+'))
 
@@ -144,9 +196,8 @@ export class KnoxProvider implements BaseProviderType {
   }
 
   protected async fetchDefaultGroup(project: KnoxProjectType): Promise<GroupInfoType | null> {
-    const groupList: KnoxGroupType[] = await this.fetch(
-      `/pims/todo/rest/v1/project/${project.projectId}/group/list`,
-    )
+    const url = `/pims/todo/rest/v1/project/${project.projectId}/group/list`
+    const groupList: KnoxGroupType[] = await this.fetch(url)
 
     const defaultGroups = groupList.filter((group) => group.defaultYn === 'Y')
     if (defaultGroups.length === 0) {
@@ -171,14 +222,15 @@ export class KnoxProvider implements BaseProviderType {
       }
     }
 
-    return Object.keys(this.groups).map(key => this.groups[key])
+    return Object.values(this.groups)
   }
 
-  protected async fetchGroupItemList(group: GroupInfoType): Promise<ProviderItemInfoType[]> {
-    let finished = false
+  protected async fetchGroupItemList(group: GroupInfoType): Promise<RemoteFileInfo[]> {
     let page = 0
-    const taskPromises: Promise<ProviderItemInfoType | null>[] = []
-    while (!finished) {
+    let totalPages = 1
+    const taskPromises: Promise<RemoteFileInfo | null>[] = []
+
+    do {
       const params = new URLSearchParams({
         groupId: group.id,
         page: `${page}`,
@@ -188,28 +240,23 @@ export class KnoxProvider implements BaseProviderType {
         complete: 'INCLUSION',
       }).toString()
 
-      const resp: TaskSummaryListType = await this.fetch(
-        `/pims/todo/rest/v1/project/${group.projectId}/group/todos/list?${params}`,
-      )
+      const url = `/pims/todo/rest/v1/project/${group.projectId}/group/todos/list?${params}`
+      const resp: TaskSummaryListType = await this.fetch(url)
 
       for (const item of resp.elements) {
         taskPromises.push(this.fetchItemInfo(item.uid, group.name))
       }
 
+      totalPages = resp.totalPages
       ++page
-      if (page >= resp.totalPages) {
-        finished = true
-      }
-    }
+    } while (page < totalPages)
 
     const tasks = await Promise.all(taskPromises)
-    const filteredTasks = tasks.filter((task): task is ProviderItemInfoType => task !== null)
-
-    return filteredTasks
+    return tasks.filter((task): task is RemoteFileInfo => task !== null)
   }
 
-  async fetchItemList(): Promise<ItemInfoType[]> {
-    const itemList: ProviderItemInfoType[] = []
+  async fetchItemList(): Promise<RemoteFileInfo[]> {
+    const itemList: RemoteFileInfo[] = []
     for (const group of Object.values(this.groups)) {
       const items = await this.fetchGroupItemList(group)
       itemList.push(...items)
@@ -223,7 +270,7 @@ export class KnoxProvider implements BaseProviderType {
     return itemList
   }
 
-  async fetchItemInfo(id: string, groupName: string): Promise<ProviderItemInfoType | null> {
+  async fetchItemInfo(id: string, groupName: string): Promise<RemoteFileInfo | null> {
     const params = new URLSearchParams({
       type: 'ALL',
       orderType: 'ASCEND',
@@ -231,30 +278,27 @@ export class KnoxProvider implements BaseProviderType {
     }).toString()
     const task: TaskDetailType = await this.fetch(`/pims/todo/rest/v1/phase2/todos/${id}?${params}`)
 
-    const data = extractText(task.contents)
-    const status = task.status === 'COMPLETED' ? 'D' : 'N'
-
     // content가 없는 태스크(이전 동기화 도중 중단된 경우 등)도 this.items에 등록하여
     // 동일 이름으로 중복 생성되는 것을 방지한다.
-    const fallback: string[] = ['0', '0', '', '0', '']
-    const [mTime, cTime, , size, content] = data ?? fallback
+    const parsed = parseKnoxContent(task.contents)
 
-    const info: ProviderItemInfoType = {
-      id: task.uid,
-      key: `${groupName}/${task.subject}`,
-      status,
-      cTime: parseInt(cTime),
-      mTime: parseInt(mTime),
-      size: parseInt(size),
-      groupId: task.groupId,
-      content: data ? (content ?? null) : null,
-    }
+    // content 파싱에 실패한 항목은 동기화 대상에서 제외한다. (파일이 아닌 일반 태스크일 가능성 있음)
+    if (null === parsed) return null
+
+    // v1 포맷 항목은 동기화 대상에서 제외
+    if (parsed.version === 1) return null
+
+    const status = task.status === 'COMPLETED' ? 'D' : 'N'
+    const itemPath = `${groupName}/${parsed.path}`
+
+    const info = RemoteFileInfo.fromPath(itemPath, status, parsed.cTime, parsed.mTime, parsed.size, task.uid, task.groupId, parsed.content)
 
     if (
       task.status !== 'COMPLETED' &&
       new Date(task.modified).valueOf() + ONE_MONTH_MS < Date.now()
     ) {
-      this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.uid}/inline/update`, {
+      const url = `/pims/todo/rest/v1/phase2/todos/${task.uid}/inline/update`
+      this.fetch(url, {
         method: 'POST',
         body: {
           inlineType: 'STATUS',
@@ -277,49 +321,34 @@ export class KnoxProvider implements BaseProviderType {
     return Promise.resolve(null)
   }
 
-  protected findGroup(key: string): GroupInfoType | null {
-    const projectName = key.split('/')[0]
-    const group = this.groups[projectName] ?? null
-
-    return group
+  protected findGroup(groupName: string): GroupInfoType | null {
+    return this.groups[groupName] ?? null
   }
-  protected async createItem(item: ItemInfoType): Promise<ProviderItemInfoType | null> {
-    const projectName = item.key.split('/')[0]
-    // Find the group for the project
-    const group = this.findGroup(item.key)
+
+  protected async createItem(item: FileInfo): Promise<RemoteFileInfo | null> {
+    const group = this.findGroup(item.groupName)
     if (!group) {
-      // No group found for the project
       return null
     }
 
-    const subject = item.key.substring(projectName.length + 1)
-
+    const url = `/pims/todo/rest/v1/project/${group.projectId}/group/${group.id}/todos/create`
     const resp: TaskDetailType = await this.fetch(
-      `/pims/todo/rest/v1/project/${group.projectId}/group/${group.id}/todos/create`,
+      url,
       {
         method: 'POST',
         body: {
-          subject,
+          subject: item.key
         },
       },
     )
 
-    const info: ProviderItemInfoType = {
-      id: resp.uid,
-      key: item.key,
-      status: 'N',
-      cTime: item.cTime,
-      mTime: item.mTime,
-      size: item.size,
-      groupId: group.id,
-      content: null,
-    }
+    const info = RemoteFileInfo.fromPath(item.fullPath, 'N', item.cTime, item.mTime, item.size, resp.uid, group.id, null)
 
     return info
   }
 
-  async uploadFile(item: ItemInfoType, data: ArrayBuffer): Promise<boolean> {
-    const group = this.findGroup(item.key)
+  async uploadFile(item: FileInfo, data: ArrayBuffer): Promise<boolean> {
+    const group = this.findGroup(item.groupName)
     if (!group) {
       return false
     }
@@ -334,9 +363,10 @@ export class KnoxProvider implements BaseProviderType {
 
     const task = this.items[item.key]
     const content = arrayBufferToBase64(data)
-    const knoxContent = encodeKnoxContent(`${item.mTime};${item.cTime};N;${item.size};${content};`)
+    const knoxContent = encodeKnoxContent(buildKnoxData(item.mTime, item.cTime, 'N', item.size, item.path, content))
 
-    const result = await this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`, {
+    const url = `/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`
+    const result = await this.fetch(url, {
       method: 'POST',
       body: {
         inlineType: 'CONTENTS',
@@ -350,8 +380,8 @@ export class KnoxProvider implements BaseProviderType {
     return result
   }
 
-  async deleteFile(item: ItemInfoType): Promise<boolean> {
-    const group = this.findGroup(item.key)
+  async deleteFile(item: FileInfo): Promise<boolean> {
+    const group = this.findGroup(item.groupName)
     if (!group) {
       return false
     }
@@ -366,31 +396,21 @@ export class KnoxProvider implements BaseProviderType {
 
     const task = this.items[item.key]
 
-    const knoxContent = encodeKnoxContent(`${item.mTime};${item.cTime};D;${item.size};;`)
-    const result = await Promise.resolve()
-      .then(() =>
-        this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`, {
-          method: 'POST',
-          body: {
-            inlineType: 'CONTENTS',
-            contentsType: 'MIME',
-            contents: knoxContent,
-          },
-        }),
-      )
-      .then(() =>
-        this.fetch(`/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`, {
-          method: 'POST',
-          body: {
-            inlineType: 'STATUS',
-            status: 'COMPLETED',
-          },
-        }),
-      )
-      .then(() => true)
-      .catch(() => false)
-
-    return result
+    const knoxContent = encodeKnoxContent(buildKnoxData(item.mTime, item.cTime, 'D', item.size, item.path, ''))
+    const url = `/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`
+    try {
+      await this.fetch(url, {
+        method: 'POST',
+        body: { inlineType: 'CONTENTS', contentsType: 'MIME', contents: knoxContent },
+      })
+      await this.fetch(url, {
+        method: 'POST',
+        body: { inlineType: 'STATUS', status: 'COMPLETED' },
+      })
+      return true
+    } catch {
+      return false
+    }
   }
 }
 

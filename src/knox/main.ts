@@ -5,6 +5,7 @@ import { sync } from '../sync'
 import { createRemote } from '../remote'
 import { createKnoxProvider } from './knoxProvider'
 import { db } from '../database'
+import { syncState } from '../syncState'
 
 const local = {
   lastModifiedTime: 0,
@@ -15,6 +16,11 @@ export default class KnoxSyncPlugin extends Plugin {
     host: 'http://samsung.net',
     syncInterval: 0,
     onSaveInterval: 0,
+  }
+
+  private onSaveSettings = (params: Record<string, string | number>) => {
+    this.settings = Object.assign({}, this.settings, params)
+    void this.saveData(this.settings)
   }
 
   async isIntervalSyncTime() {
@@ -51,6 +57,8 @@ export default class KnoxSyncPlugin extends Plugin {
   }
 
   async sync() {
+    if (syncState.isSyncing) return
+
     const settings = this.settings
     const vault = this.app.vault
     const provider = createKnoxProvider(settings.host)
@@ -132,10 +140,7 @@ export default class KnoxSyncPlugin extends Plugin {
         }),
       )
 
-      event.on('saveSettings', (params: Record<string, string | number>) => {
-        this.settings = Object.assign({}, this.settings, params)
-        void this.saveData(this.settings)
-      })
+      event.on('saveSettings', this.onSaveSettings)
 
       // When registering intervals, this function will automatically clear the interval when the plugin is disabled.
       this.registerInterval(window.setInterval(() => void this.checkSync(), 10 * 1000))
@@ -144,8 +149,7 @@ export default class KnoxSyncPlugin extends Plugin {
           void db.state.get('lastSyncTime').then((state) => {
             const lastSyncTime = state?.value ?? 0
             if (lastSyncTime > 0) {
-              const d = new Date(lastSyncTime)
-              const formattedTime = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`
+              const formattedTime = new Date(lastSyncTime).toLocaleString('sv')
 
               statusBarItemEl.setText(`Knox Sync: ${formattedTime}`)
             }
@@ -158,7 +162,7 @@ export default class KnoxSyncPlugin extends Plugin {
   }
 
   onunload() {
-    event.off('saveSettings')
+    event.off('saveSettings', this.onSaveSettings)
 
     console.debug('KnoxSyncPlugin unloaded')
   }

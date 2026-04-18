@@ -5,6 +5,15 @@ interface State {
   value: number
 }
 
+export interface ItemInfoType {
+  key: string
+  path: string
+  status: string // 'C' | 'U' | 'D' | 'N'
+  cTime: number
+  mTime: number
+  size: number
+}
+
 export const db = new Dexie('knox-sync') as Dexie & {
   state: EntityTable<State, 'key'>
   file: EntityTable<ItemInfoType, 'key'>

@@ -1,8 +1,8 @@
 import { BaseProviderType } from './base'
+import { FileInfo } from './file'
 
 export class Remote {
   provider: BaseProviderType
-  groups: GroupInfoType[]
 
   constructor(provider: BaseProviderType) {
     this.provider = provider
@@ -30,12 +30,12 @@ export class Remote {
     return this.provider.downloadFile(key)
   }
 
-  uploadFile(item: ItemInfoType, data: ArrayBuffer) {
+  uploadFile(item: FileInfo, data: ArrayBuffer) {
     console.debug('Uploading file:', item.key)
     return this.provider.uploadFile(item, data)
   }
 
-  deleteFile(item: ItemInfoType) {
+  deleteFile(item: FileInfo) {
     console.debug('Deleting file:', item.key)
     return this.provider.deleteFile(item)
   }
