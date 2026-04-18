@@ -16,59 +16,77 @@ function toItemInfoType(info: FileInfo): ItemInfoType {
   }
 }
 
-export const event = new EventEmitter()
-
-event.on('create', async (file: TFile) => {
-  if (syncState.lockFile.has(file.path)) return
-
-  if (file instanceof TFile && file.path.startsWith('+')) {
+async function onCreateEvent(file: TFile) {
+  if (file.path.startsWith('+')) {
     const info = await FileInfo.fromTFile(file, 'C')
     const item: ItemInfoType = toItemInfoType(info)
 
-    void db.file.put(item)
+    await db.file.put(item)
   }
-})
+}
 
-event.on('modify', async (file: TFile) => {
-  if (syncState.lockFile.has(file.path)) return
-
-  if (file instanceof TFile && file.path.startsWith('+')) {
+async function onModifyEvent(file: TFile) {
+  if (file.path.startsWith('+')) {
     const info = await FileInfo.fromTFile(file, 'U')
     const item: ItemInfoType = toItemInfoType(info)
 
-    void db.file.put(item)
+    await db.file.put(item)
   }
-})
+}
 
-event.on('delete', async (file: TFile) => {
-  if (syncState.lockFile.has(file.path)) return
-
-  if (file instanceof TFile && file.path.startsWith('+')) {
+async function onDeleteEvent(file: TFile) {
+  if (file.path.startsWith('+')) {
     const info = await FileInfo.create(file.path, 'D', file.stat.ctime, Date.now(), file.stat.size)
     const item: ItemInfoType = toItemInfoType(info)
 
-    void db.file.put(item)
+    await db.file.put(item)
   }
+}
+
+async function onRenameEvent(file: TFile, oldPath: string) {
+  if (file.path.startsWith('+')) {
+    const info = await FileInfo.fromTFile(file, 'C')
+    const item: ItemInfoType = toItemInfoType(info)
+
+    await db.file.put(item)
+  }
+
+  if (oldPath.startsWith('+')) {
+    const oldInfo = await FileInfo.create(oldPath, 'D', file.stat.ctime, Date.now(), file.stat.size)
+    const oldItem: ItemInfoType = toItemInfoType(oldInfo)
+
+    await db.file.put(oldItem)
+  }
+}
+
+export const event = new EventEmitter()
+
+event.on('create', (file: TFile) => {
+  // 싱크중이면 무시
+  if (syncState.lockFile.has(file.path)) return
+
+  void onCreateEvent(file)
 })
 
-event.on('rename', async (file: TFile, oldPath: string) => {
+event.on('modify', (file: TFile) => {
+  // 싱크중이면 무시
+  if (syncState.lockFile.has(file.path)) return
+
+  void onModifyEvent(file)
+})
+
+event.on('delete', (file: TFile) => {
+  // 싱크중이면 무시
+  if (syncState.lockFile.has(file.path)) return
+
+  void onDeleteEvent(file)
+})
+
+event.on('rename', (file: TFile, oldPath: string) => {
+  // 싱크중이면 무시
   if (syncState.lockFile.has(oldPath)) return
 
-  if (file instanceof TFile) {
-    if (file.path.startsWith('+')) {
-      const info = await FileInfo.fromTFile(file, 'C')
-      const item: ItemInfoType = toItemInfoType(info)
-
-      void db.file.put(item)
-    }
-
-    if (oldPath.startsWith('+')) {
-      const oldInfo = await FileInfo.create(oldPath, 'D', file.stat.ctime, Date.now(), file.stat.size)
-      const oldItem: ItemInfoType = toItemInfoType(oldInfo)
-
-      void db.file.put(oldItem)
-    }
-  }
+  void onRenameEvent(file, oldPath)
 })
 
 event.on('updateLastSyncTime', () => {

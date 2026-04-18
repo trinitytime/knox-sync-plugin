@@ -114,29 +114,37 @@ export default class KnoxSyncPlugin extends Plugin {
       local.lastModifiedTime = 0
 
       this.registerEvent(
-        this.app.vault.on('create', (file) => {
-          event.emit('create', file)
-          local.lastModifiedTime = Date.now()
+        this.app.vault.on('create', (file: TAbstractFile) => {
+          if (file instanceof TFile) {
+            event.emit('create', file)
+            local.lastModifiedTime = Date.now()
+          }
         }),
       )
 
       this.registerEvent(
         this.app.vault.on('modify', (file: TAbstractFile) => {
-          event.emit('modify', file)
-          local.lastModifiedTime = Date.now()
+          if (file instanceof TFile) {
+            event.emit('modify', file)
+            local.lastModifiedTime = Date.now()
+          }
         }),
       )
 
       this.registerEvent(
         this.app.vault.on('delete', (file: TAbstractFile) => {
-          event.emit('delete', file)
-          local.lastModifiedTime = Date.now()
+          if (file instanceof TFile) {
+            event.emit('delete', file)
+            local.lastModifiedTime = Date.now()
+          }
         }),
       )
       this.registerEvent(
         this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-          event.emit('rename', file, oldPath)
-          local.lastModifiedTime = Date.now()
+          if (file instanceof TFile) {
+            event.emit('rename', file, oldPath)
+            local.lastModifiedTime = Date.now()
+          }
         }),
       )
 
