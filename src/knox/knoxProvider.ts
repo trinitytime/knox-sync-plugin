@@ -72,7 +72,7 @@ function parseKnoxContent(text: string | null): ParsedKnoxContent | null {
     cTime: parseInt(cTime),
     status,
     size: parseInt(size),
-    path,
+    path: decodeURIComponent(path),
     content: content || null,
   }
 }
@@ -89,7 +89,7 @@ function buildKnoxData(
   if (version === 1) {
     return `${mTime};${cTime};${status};${size};${content};`
   }
-  return `${version}:${mTime};${cTime};${status};${size};${path};${content};`
+  return `${version}:${mTime};${cTime};${status};${size};${encodeURIComponent(path)};${content};`
 }
 
 function encodeKnoxContent(text: string): string {
