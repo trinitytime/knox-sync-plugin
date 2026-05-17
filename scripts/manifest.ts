@@ -20,7 +20,7 @@ export async function generateObsidianPluginManifest() {
     id: 'knox-sync',
     name: 'Knox Sync',
     version: packageJSON.version,
-    minAppVersion: '1.4.0',
+    minAppVersion: '1.6.6',
     description: packageJSON.description,
     author: 'Buwon Lee',
     authorUrl: 'https://github.com/trinitytime',
