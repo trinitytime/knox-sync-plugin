@@ -42,7 +42,7 @@ export default class KnoxSyncPlugin extends Plugin {
     return Date.now() - local.lastModifiedTime >= settings.onSaveInterval
   }
 
-  async checkSync() {
+  async checkSync(setStatusBarText: (text: string) => void) {
     if (await this.isIntervalSyncTime()) {
       local.lastModifiedTime = 0
       await this.sync()
@@ -53,6 +53,14 @@ export default class KnoxSyncPlugin extends Plugin {
       local.lastModifiedTime = 0
       await this.sync()
       return
+    }
+
+    const state = await db.state.get('lastSyncTime')
+    const lastSyncTime = state?.value ?? 0
+    if (lastSyncTime > 0) {
+      const formattedTime = new Date(lastSyncTime).toLocaleString('sv')
+
+      setStatusBarText(`Knox Sync: ${formattedTime}`)
     }
   }
 
@@ -151,19 +159,10 @@ export default class KnoxSyncPlugin extends Plugin {
       event.on('saveSettings', this.onSaveSettings)
 
       // When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-      this.registerInterval(window.setInterval(() => void this.checkSync(), 10 * 1000))
-      this.registerInterval(
-        window.setInterval(() => {
-          void db.state.get('lastSyncTime').then((state) => {
-            const lastSyncTime = state?.value ?? 0
-            if (lastSyncTime > 0) {
-              const formattedTime = new Date(lastSyncTime).toLocaleString('sv')
-
-              statusBarItemEl.setText(`Knox Sync: ${formattedTime}`)
-            }
-          })
-        }, 10 * 1000),
-      )
+      function setStatusBarText(text: string) {
+        statusBarItemEl.setText(`Knox Sync: ${text}`)
+      }
+      this.registerInterval(window.setInterval(() => void this.checkSync(setStatusBarText), 10 * 1000))
 
       console.debug('KnoxSyncPlugin loaded')
     })
@@ -182,7 +181,7 @@ export default class KnoxSyncPlugin extends Plugin {
       onSaveInterval: 0,
     }
 
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as KnoxSyncPluginSettings
   }
 
   async saveSettings() {

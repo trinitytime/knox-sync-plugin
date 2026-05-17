@@ -50,7 +50,7 @@ async function writeFileWithLock(
   content: ArrayBuffer | null,
   stat: { ctime: number; mtime: number },
 ): Promise<void> {
-  syncState.lockFile.add(path)
+  syncState.addLock(path)
   try {
     if (file) {
       if (content) await vault.modifyBinary(file, content, stat)
@@ -60,7 +60,7 @@ async function writeFileWithLock(
       await vault.create(path, '', stat)
     }
   } finally {
-    syncState.lockFile.delete(path)
+    syncState.removeLock(path)
   }
 }
 
@@ -90,20 +90,20 @@ async function downloadSingleFile(
     if (localFile.stat.mtime >= remoteItem.mTime) return false // 로컬이 더 최신이면 건너뜀
 
     if (remoteItem.status === 'D') {
-      syncState.lockFile.add(fullPath)
+      syncState.addLock(fullPath)
       try {
         await fileManager.trashFile(localFile)
       } finally {
-        syncState.lockFile.delete(fullPath)
+        syncState.removeLock(fullPath)
       }
     } else {
       const content = await remote.downloadFile(key)
       if (content) {
-        syncState.lockFile.add(fullPath)
+        syncState.addLock(fullPath)
         try {
           await vault.modifyBinary(localFile, content, stat)
         } finally {
-          syncState.lockFile.delete(fullPath)
+          syncState.removeLock(fullPath)
         }
       }
     }
@@ -174,7 +174,7 @@ async function uploadFiles({
 
 export async function sync(vault: Vault, remote: Remote, fileManager: FileManager) {
   if (syncState.isSyncing) return
-  syncState.isSyncing = true
+  syncState.startSync()
 
   try {
     const files = await loadLocalFiles(vault)

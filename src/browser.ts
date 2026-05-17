@@ -3,7 +3,7 @@ export class Browser {
 
   get browser(): Electron.BrowserWindow {
     if (!this.browserWindow) {
-      const remote = window.require('electron').remote
+      const remote: Electron.Remote = window.require('electron').remote
       const browserWindow = new remote.BrowserWindow({
         width: 800,
         height: 600,
@@ -40,12 +40,12 @@ export class Browser {
 
   async loadURL(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
+      const timeoutId = activeWindow.setTimeout(() => {
         reject(new Error('loadURL timeout'))
       }, 10 * 1000)
 
       this.webContents.once('did-finish-load', () => {
-        clearTimeout(timeoutId)
+        activeWindow.clearTimeout(timeoutId)
         resolve()
       })
       this.webContents.once('did-finish-load', resolve)
@@ -61,7 +61,7 @@ export class Browser {
     return new Promise((resolve, reject) => {
       this.webContents
         .executeJavaScript(script)
-        .then(() => setTimeout(resolve, wait))
+        .then(() => activeWindow.setTimeout(resolve, wait))
         .catch(reject)
     })
   }

@@ -1,16 +1,31 @@
-export interface SyncStateType {
-  isSyncing: boolean
-  lockFile: Set<string>
+class SyncState {
+  #isSyncing = false
+  readonly #lockFile = new Set<string>()
 
-  reset: () => void
+  get isSyncing(): boolean {
+    return this.#isSyncing
+  }
+
+  startSync(): void {
+    this.#isSyncing = true
+  }
+
+  isLocked(path: string): boolean {
+    return this.#lockFile.has(path)
+  }
+
+  addLock(path: string): void {
+    this.#lockFile.add(path)
+  }
+
+  removeLock(path: string): void {
+    this.#lockFile.delete(path)
+  }
+
+  reset(): void {
+    this.#isSyncing = false
+    this.#lockFile.clear()
+  }
 }
 
-export const syncState: SyncStateType = {
-  isSyncing: false,
-  lockFile: new Set<string>(),
-
-  reset() {
-    this.isSyncing = false
-    this.lockFile.clear()
-  },
-}
+export const syncState = new SyncState()

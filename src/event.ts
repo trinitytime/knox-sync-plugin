@@ -63,28 +63,28 @@ export const event = new EventEmitter()
 
 event.on('create', (file: TFile) => {
   // 싱크중이면 무시
-  if (syncState.lockFile.has(file.path)) return
+  if (syncState.isLocked(file.path)) return
 
   void onCreateEvent(file)
 })
 
 event.on('modify', (file: TFile) => {
   // 싱크중이면 무시
-  if (syncState.lockFile.has(file.path)) return
+  if (syncState.isLocked(file.path)) return
 
   void onModifyEvent(file)
 })
 
 event.on('delete', (file: TFile) => {
   // 싱크중이면 무시
-  if (syncState.lockFile.has(file.path)) return
+  if (syncState.isLocked(file.path)) return
 
   void onDeleteEvent(file)
 })
 
 event.on('rename', (file: TFile, oldPath: string) => {
   // 싱크중이면 무시
-  if (syncState.lockFile.has(oldPath)) return
+  if (syncState.isLocked(oldPath)) return
 
   void onRenameEvent(file, oldPath)
 })
