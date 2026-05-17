@@ -13,6 +13,8 @@ jobs:
     name: Build
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,12 +36,16 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Create ZIP file
-        run: mv ./dist ./knox-sync && zip -r knox-sync.zip ./knox-sync
-
       - name: Get release version
         id: version
         run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/main.js
+            dist/manifest.json
 
       - name: Create release
         env:
@@ -50,4 +56,4 @@ jobs:
           gh release create "${{ steps.version.outputs.VERSION }}" \
             --title="${{ steps.version.outputs.VERSION }}" \
             --draft \
-            knox-sync.zip knox-sync/main.js knox-sync/manifest.json
+            dist/main.js dist/manifest.json
