@@ -1,13 +1,13 @@
 {
 	"name": "knox-sync-plugin",
-	"version": "1.1.3",
+	"version": "1.1.4",
 	"description": "Sync your vault with knox portal.",
 	"main": "dist/main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"watch": "node esbuild.config.mjs",
 		"watch:knox": "bun run build:plugin -- --outfile=main.js --watch",
-		"build": "bun run build:plugin -- --outfile=dist/main.js && bun run build:manifest",
+		"build": "bun install && bun run build:plugin -- --outfile=dist/main.js && bun run build:manifest",
 		"build:plugin": "bun build src/knox/main.ts --bundle --target node --format cjs --external obsidian --external electron",
 		"build:manifest": "bun run scripts/manifest.ts",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
