@@ -27,7 +27,7 @@ interface KnoxGroupType {
 interface TaskSummaryType {
   subject: string
   uid: string
-  status: string // COMPLETED, NEED_ACTION
+  status: string // COMPLETED, NEEDS_ACTION
   groupId: string
   created: string
   modified: string
@@ -44,7 +44,7 @@ interface TaskSummaryListType {
 interface TaskDetailType {
   subject: string
   uid: string
-  status: string // COMPLETED, NEED_ACTION
+  status: string // COMPLETED, NEEDS_ACTION
   contents: string
   groupId: string
   projectGroupId: string

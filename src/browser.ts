@@ -17,6 +17,8 @@ export class Browser {
         this.browserWindow = null
       })
 
+      browserWindow.webContents.removeAllListeners(['will-navigate'])
+
       this.browserWindow = browserWindow
     }
 
@@ -48,7 +50,6 @@ export class Browser {
         activeWindow.clearTimeout(timeoutId)
         resolve()
       })
-      this.webContents.once('did-finish-load', resolve)
       this.webContents.loadURL(url).catch(reject)
     })
   }

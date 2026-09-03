@@ -160,7 +160,7 @@ export default class KnoxSyncPlugin extends Plugin {
 
       // When registering intervals, this function will automatically clear the interval when the plugin is disabled.
       function setStatusBarText(text: string) {
-        statusBarItemEl.setText(`Knox Sync: ${text}`)
+        statusBarItemEl.setText(text)
       }
       this.registerInterval(window.setInterval(() => void this.checkSync(setStatusBarText), 10 * 1000))
 

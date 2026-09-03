@@ -5,6 +5,7 @@ declare namespace Electron {
     loadURL(url: string): Promise<void>
 
     once(event: 'did-finish-load', listener: () => void): this
+    removeAllListeners(events: string[]): this
 
     executeJavaScript<T>(code: string): Promise<T>
   }

@@ -169,9 +169,7 @@ export class KnoxProvider implements BaseProviderType {
         return Promise.resolve(false)
       }
 
-      await this.browser.executeScript(
-        `window.location.href = window.location.origin + '/taskapp/task';`,
-      )
+      await this.browser.loadURL(new URL(url).origin + '/taskapp/task')
 
       await sleep(1_000)
 
@@ -302,7 +300,7 @@ export class KnoxProvider implements BaseProviderType {
         method: 'POST',
         body: {
           inlineType: 'STATUS',
-          status: 'NEED_ACTION',
+          status: 'NEEDS_ACTION',
         },
       }).catch((e) => {
         console.error('Failed to archive old item:', e)
