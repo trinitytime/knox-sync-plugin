@@ -39,3 +39,7 @@ declare namespace Electron {
 declare module 'electron' {
   export = Electron
 }
+
+interface Window {
+  require(module: 'electron'): typeof Electron
+}
