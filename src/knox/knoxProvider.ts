@@ -5,7 +5,7 @@ import { FileInfo, RemoteFileInfo } from '../file'
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => activeWindow.setTimeout(resolve, ms))
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
