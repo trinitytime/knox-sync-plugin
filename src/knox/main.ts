@@ -4,6 +4,7 @@ import { KnoxSettingTab, KnoxSyncPluginSettings } from './settings'
 import { sync } from '../sync'
 import { createRemote } from '../remote'
 import { createKnoxProvider } from './knoxProvider'
+import { endpoints } from './endpoints'
 import { db } from '../database'
 import { syncState } from '../syncState'
 
@@ -13,7 +14,7 @@ const local = {
 
 export default class KnoxSyncPlugin extends Plugin {
   settings: KnoxSyncPluginSettings = {
-    host: 'http://samsung.net',
+    host: endpoints.defaultHost(),
     syncInterval: 0,
     onSaveInterval: 0,
   }
@@ -176,7 +177,7 @@ export default class KnoxSyncPlugin extends Plugin {
 
   async loadSettings() {
     const DEFAULT_SETTINGS: KnoxSyncPluginSettings = {
-      host: 'http://samsung.net',
+      host: endpoints.defaultHost(),
       syncInterval: 0,
       onSaveInterval: 0,
     }

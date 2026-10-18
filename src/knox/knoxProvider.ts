@@ -1,9 +1,10 @@
 import { BaseProviderType } from '../base'
 import { Browser, createBrowser } from '../browser'
 import { FileInfo, RemoteFileInfo } from '../file'
+import { endpoints } from './endpoints'
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000
-
+ 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
@@ -169,7 +170,7 @@ export class KnoxProvider implements BaseProviderType {
         return Promise.resolve(false)
       }
 
-      await this.browser.loadURL(new URL(url).origin + '/taskapp/task')
+      await this.browser.loadURL(new URL(url).origin + endpoints.taskPage())
 
       await sleep(1_000)
 
@@ -185,7 +186,7 @@ export class KnoxProvider implements BaseProviderType {
       orderField: 'CREATE_DATE',
       orderType: 'DESC',
     }).toString()
-    const url = `/pims/todo/rest/v1/project/list?${params}`
+    const url = `${endpoints.projectList()}?${params}`
     const projList: KnoxProjectListType = await this.fetch(url)
 
     const filteredProjects = projList.elements.filter((proj) => proj.projectName.startsWith('+'))
@@ -194,7 +195,7 @@ export class KnoxProvider implements BaseProviderType {
   }
 
   protected async fetchDefaultGroup(project: KnoxProjectType): Promise<GroupInfoType | null> {
-    const url = `/pims/todo/rest/v1/project/${project.projectId}/group/list`
+    const url = endpoints.groupList(project.projectId)
     const groupList: KnoxGroupType[] = await this.fetch(url)
 
     const defaultGroups = groupList.filter((group) => group.defaultYn === 'Y')
@@ -238,7 +239,7 @@ export class KnoxProvider implements BaseProviderType {
         complete: 'INCLUSION',
       }).toString()
 
-      const url = `/pims/todo/rest/v1/project/${group.projectId}/group/todos/list?${params}`
+      const url = `${endpoints.groupTasks(group.projectId)}?${params}`
       const resp: TaskSummaryListType = await this.fetch(url)
 
       for (const item of resp.elements) {
@@ -274,7 +275,7 @@ export class KnoxProvider implements BaseProviderType {
       orderType: 'ASCEND',
       orderField: 'REG_UPDATE_TIME',
     }).toString()
-    const task: TaskDetailType = await this.fetch(`/pims/todo/rest/v1/phase2/todos/${id}?${params}`)
+    const task: TaskDetailType = await this.fetch(`${endpoints.todoDetail(id)}?${params}`)
 
     // content가 없는 태스크(이전 동기화 도중 중단된 경우 등)도 this.items에 등록하여
     // 동일 이름으로 중복 생성되는 것을 방지한다.
@@ -295,7 +296,7 @@ export class KnoxProvider implements BaseProviderType {
       task.status !== 'COMPLETED' &&
       new Date(task.modified).valueOf() + ONE_MONTH_MS < Date.now()
     ) {
-      const url = `/pims/todo/rest/v1/phase2/todos/${task.uid}/inline/update`
+      const url = endpoints.todoUpdate(task.uid)
       this.fetch(url, {
         method: 'POST',
         body: {
@@ -329,7 +330,7 @@ export class KnoxProvider implements BaseProviderType {
       return null
     }
 
-    const url = `/pims/todo/rest/v1/project/${group.projectId}/group/${group.id}/todos/create`
+    const url = endpoints.todoCreate(group.projectId, group.id)
     const resp: TaskDetailType = await this.fetch(
       url,
       {
@@ -363,7 +364,7 @@ export class KnoxProvider implements BaseProviderType {
     const content = arrayBufferToBase64(data)
     const knoxContent = encodeKnoxContent(buildKnoxData(item.mTime, item.cTime, 'N', item.size, item.path, content))
 
-    const url = `/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`
+    const url = endpoints.todoUpdate(task.id)
     const result = await this.fetch(url, {
       method: 'POST',
       body: {
@@ -395,7 +396,7 @@ export class KnoxProvider implements BaseProviderType {
     const task = this.items[item.key]
 
     const knoxContent = encodeKnoxContent(buildKnoxData(item.mTime, item.cTime, 'D', item.size, item.path, ''))
-    const url = `/pims/todo/rest/v1/phase2/todos/${task.id}/inline/update`
+    const url = endpoints.todoUpdate(task.id)
     try {
       await this.fetch(url, {
         method: 'POST',
